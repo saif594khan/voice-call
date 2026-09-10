@@ -43,30 +43,32 @@
   let peer = null;
   let localAudioStream = null;
   let activeCall = null;
-  let audioCtx = null;
-
-  // Initialize Web Audio Context to keep audio graph active in background
-  function enableBackgroundAudio(stream) {
-    if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-    const source = audioCtx.createMediaStreamSource(stream);
-    const destination = audioCtx.createMediaStreamDestination();
-    source.connect(destination);
-  }
+  let wakeLock = null;
 
   // 1. Get Microphone
   navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-    .then(stream => { 
-      localAudioStream = stream; 
-    })
+    .then(stream => { localAudioStream = stream; })
     .catch(err => alert("Microphone access required for calling."));
 
   function sanitizeId(email) {
     return email.replace(/[^a-zA-Z0-9]/g, "_");
+  }
+
+  // Wake Lock for web browsers
+  async function requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLock = await navigator.wakeLock.request('screen');
+      }
+    } catch (err) {
+      console.log('Wake lock error:', err.message);
+    }
+  }
+
+  function releaseWakeLock() {
+    if (wakeLock !== null) {
+      wakeLock.release().then(() => { wakeLock = null; });
+    }
   }
 
   // 2. Register & Go Online
@@ -102,6 +104,14 @@
 
       incomingCall.on('close', () => resetCallUI());
     });
+
+    peer.on('error', (err) => {
+      console.error(err);
+      if (err.type === 'peer-unavailable') {
+        alert("Recipient is offline or email address is incorrect!");
+        resetCallUI();
+      }
+    });
   }
 
   // 3. Make Outgoing Call
@@ -125,20 +135,16 @@
     }
   }
 
-  // 4. Setup Call Connection & Audio Routing
+  // 4. Setup Call Connection
   function setupCallUI(remoteStream) {
     const audioElement = document.getElementById('remoteAudio');
     audioElement.srcObject = remoteStream;
     audioElement.play();
 
-    // Enable background audio session routing
-    enableBackgroundAudio(remoteStream);
-
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: 'Active Voice Call',
-        artist: 'Web Voice Caller',
-        album: 'Ongoing Call'
+        title: 'Voice Call Active',
+        artist: 'Web Voice Caller'
       });
       navigator.mediaSession.playbackState = 'playing';
     }
@@ -147,8 +153,11 @@
     document.getElementById('statusText').style.background = "#cce5ff";
     document.getElementById('callBtn').style.display = "none";
     document.getElementById('endBtn').style.display = "block";
+
+    requestWakeLock();
   }
 
+  // 5. End Call
   function endCall() {
     if (activeCall) activeCall.close();
     resetCallUI();
@@ -162,29 +171,11 @@
     document.getElementById('statusText').innerText = "Status: Call Ended";
     document.getElementById('statusText').style.background = "#f0f0f0";
 
+    releaseWakeLock();
     if ('mediaSession' in navigator) {
       navigator.mediaSession.playbackState = 'none';
     }
   }
-  import { KeepAwake } from '@capacitor-community/keep-awake';
-
-// Call this inside setupCallUI() when a call connects
-async function keepCallAlive() {
-  try {
-    await KeepAwake.keepAwake();
-  } catch (err) {
-    console.log('KeepAwake error:', err);
-  }
-}
-
-// Call this inside resetCallUI() when the call ends
-async function allowSleep() {
-  try {
-    await KeepAwake.allowSleep();
-  } catch (err) {
-    console.log('AllowSleep error:', err);
-  }
-}
 </script>
 </body>
 </html>
