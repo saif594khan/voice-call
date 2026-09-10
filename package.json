@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/saif594khan/voice-call#readme",
   "dependencies": {
+    "@capacitor-community/keep-awake": "^8.0.1",
     "@capacitor/android": "^8.5.1",
     "@capacitor/cli": "^8.5.1",
     "@capacitor/core": "^8.5.1"

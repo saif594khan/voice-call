@@ -166,6 +166,25 @@
       navigator.mediaSession.playbackState = 'none';
     }
   }
+  import { KeepAwake } from '@capacitor-community/keep-awake';
+
+// Call this inside setupCallUI() when a call connects
+async function keepCallAlive() {
+  try {
+    await KeepAwake.keepAwake();
+  } catch (err) {
+    console.log('KeepAwake error:', err);
+  }
+}
+
+// Call this inside resetCallUI() when the call ends
+async function allowSleep() {
+  try {
+    await KeepAwake.allowSleep();
+  } catch (err) {
+    console.log('AllowSleep error:', err);
+  }
+}
 </script>
 </body>
 </html>
