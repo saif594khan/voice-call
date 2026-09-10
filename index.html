@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Voice Call App</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 400px; margin: 40px auto; padding: 20px; }
+    input, button { width: 100%; padding: 10px; margin: 8px 0; box-sizing: border-box; }
+    button { background-color: #0070f3; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background-color: #0051a2; }
+    .status { font-weight: bold; padding: 10px; background: #f0f0f0; border-radius: 4px; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <h2>Web Voice Caller</h2>
+
+  <div>
+    <label>Your Email:</label>
+    <input type="email" id="myEmail" placeholder="e.g. user1@gmail.com">
+    <button onclick="registerUser()">Login / Go Online</button>
+  </div>
+
+  <hr>
+
+  <div>
+    <label>Recipient's Email:</label>
+    <input type="email" id="receiverEmail" placeholder="e.g. user2@gmail.com">
+    <button onclick="startVoiceCall()">Call User</button>
+  </div>
+
+  <br>
+  <div class="status" id="statusText">Status: Offline</div>
+
+  <audio id="remoteAudio" autoplay></audio>
+
+<script>
+  let peer = null;
+  let localAudioStream = null;
+
+  // 1. Get Microphone
+  navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+    .then(stream => { localAudioStream = stream; })
+    .catch(err => alert("Microphone access required."));
+
+  // 2. Register
+  function registerUser() {
+    const email = document.getElementById('myEmail').value.trim().toLowerCase();
+    if (!email) return alert("Enter your email address!");
+
+    if (peer) peer.destroy();
+
+    const cleanId = email.replace(/[^a-zA-Z0-9]/g, "_");
+
+    peer = new Peer(cleanId, {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  }
+});`
+
+    peer.on('open', () => {
+      document.getElementById('statusText').innerText = "Online as: " + email;
+    });
+
+    // Handle Incoming Call via Browser Alert
+    peer.on('call', (incomingCall) => {
+      // Auto-answer for smooth local testing
+      incomingCall.answer(localAudioStream);
+      
+      incomingCall.on('stream', (remoteStream) => {
+        document.getElementById('remoteAudio').srcObject = remoteStream;
+        document.getElementById('statusText').innerText = "Status: Connected & Talking!";
+      });
+    });
+
+    peer.on('error', (err) => {
+      console.error(err);
+      if (err.type === 'peer-unavailable') {
+        alert("Recipient is offline or email address is incorrect!");
+      }
+    });
+  }
+
+  // 3. Make Outgoing Call
+  function startVoiceCall() {
+    const receiverEmail = document.getElementById('receiverEmail').value.trim().toLowerCase();
+    if (!receiverEmail) return alert("Type recipient email first!");
+
+    const targetId = receiverEmail.replace(/[^a-zA-Z0-9]/g, "_");
+    const outgoingCall = peer.call(targetId, localAudioStream);
+
+    document.getElementById('statusText').innerText = "Calling " + receiverEmail + "...";
+
+    outgoingCall.on('stream', (remoteStream) => {
+      document.getElementById('remoteAudio').srcObject = remoteStream;
+      document.getElementById('statusText').innerText = "Status: Connected!";
+    });
+  }
+</script>
+</body>
+</html>
