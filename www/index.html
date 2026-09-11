@@ -111,12 +111,11 @@
       document.getElementById('statusText').style.background = "#d4edda";
     });
 
-    // Handle Incoming Call
+    // Handle Incoming Call: Ringtone ONLY triggers here for the receiver
     peer.on('call', (incomingCall) => {
       pendingIncomingCall = incomingCall;
 
-      // Start ringing sound and show Answer Call button
-      startRingtone();
+      startRingtone(); // Plays ONLY on receiving end
       document.getElementById('statusText').innerText = "Incoming Call...";
       document.getElementById('statusText').style.background = "#fff3cd";
       document.getElementById('callBtn').style.display = "none";
@@ -134,11 +133,11 @@
     });
   }
 
-  // 3. User Clicks "Answer Call" Button
+  // 3. Receiver Clicks "Answer Call" Button
   function answerIncomingCall() {
     if (!pendingIncomingCall) return;
 
-    stopRingtone();
+    stopRingtone(); // Stop ringtone when receiver answers
     activeCall = pendingIncomingCall;
     pendingIncomingCall = null;
 
@@ -151,7 +150,7 @@
     activeCall.on('close', () => resetCallUI());
   }
 
-  // 4. Make Outgoing Call
+  // 4. Make Outgoing Call (No Ringtone Here)
   function startVoiceCall() {
     if (!peer || peer.disconnected) return alert("Please login first!");
 
@@ -163,11 +162,8 @@
 
     document.getElementById('statusText').innerText = "Calling " + receiverEmail + "...";
 
-    startRingtone();
-
     if (activeCall) {
       activeCall.on('stream', (remoteStream) => {
-        stopRingtone();
         setupCallUI(remoteStream);
       });
 
