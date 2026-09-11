@@ -24,7 +24,7 @@
   <div>
     <label>Your Email:</label>
     <input type="email" id="myEmail" placeholder="e.g. user1@gmail.com">
-    <button onclick="registerUser()">Login / Go Online</button>
+    <button onclick="saveAndRegister()">Save Email / Connect</button>
   </div>
 
   <hr>
@@ -38,9 +38,8 @@
   </div>
 
   <br>
-  <div class="status" id="statusText">Status: Offline</div>
+  <div class="status" id="statusText">Status: Initializing...</div>
 
-  <!-- Audio Elements -->
   <audio id="remoteAudio" autoplay playsinline></audio>
   <audio id="ringtoneAudio" src="lululu-ringtone.mp3" loop preload="auto"></audio>
 
@@ -63,10 +62,10 @@
     ringtone.currentTime = 0;
   }
 
-  // 1. Get Microphone
+  // 1. Get Microphone Access
   navigator.mediaDevices.getUserMedia({ audio: true, video: false })
     .then(stream => { localAudioStream = stream; })
-    .catch(err => alert("Microphone access required for calling."));
+    .catch(err => console.log("Microphone access required."));
 
   function sanitizeId(email) {
     return email.replace(/[^a-zA-Z0-9]/g, "_");
@@ -88,11 +87,25 @@
     }
   }
 
-  // 2. Register & Listen for Incoming Calls
-  function registerUser() {
+  // 2. Auto-Connect on App Launch
+  window.addEventListener('DOMContentLoaded', () => {
+    const savedEmail = localStorage.getItem('userEmail');
+    if (savedEmail) {
+      document.getElementById('myEmail').value = savedEmail;
+      connectPeer(savedEmail);
+    } else {
+      document.getElementById('statusText').innerText = "Status: Enter email to register";
+    }
+  });
+
+  function saveAndRegister() {
     const email = document.getElementById('myEmail').value.trim().toLowerCase();
     if (!email) return alert("Enter your email address!");
+    localStorage.setItem('userEmail', email);
+    connectPeer(email);
+  }
 
+  function connectPeer(email) {
     if (peer) peer.destroy();
 
     const cleanId = sanitizeId(email);
@@ -111,11 +124,11 @@
       document.getElementById('statusText').style.background = "#d4edda";
     });
 
-    // Handle Incoming Call: Ringtone ONLY triggers here for the receiver
+    // Receiver Side: Ringtone plays automatically when called
     peer.on('call', (incomingCall) => {
       pendingIncomingCall = incomingCall;
 
-      startRingtone(); // Plays ONLY on receiving end
+      startRingtone();
       document.getElementById('statusText').innerText = "Incoming Call...";
       document.getElementById('statusText').style.background = "#fff3cd";
       document.getElementById('callBtn').style.display = "none";
@@ -133,11 +146,11 @@
     });
   }
 
-  // 3. Receiver Clicks "Answer Call" Button
+  // 3. Receiver Answers
   function answerIncomingCall() {
     if (!pendingIncomingCall) return;
 
-    stopRingtone(); // Stop ringtone when receiver answers
+    stopRingtone();
     activeCall = pendingIncomingCall;
     pendingIncomingCall = null;
 
@@ -150,9 +163,9 @@
     activeCall.on('close', () => resetCallUI());
   }
 
-  // 4. Make Outgoing Call (No Ringtone Here)
+  // 4. Outgoing Call
   function startVoiceCall() {
-    if (!peer || peer.disconnected) return alert("Please login first!");
+    if (!peer || peer.disconnected) return alert("Connecting to server... please wait.");
 
     const receiverEmail = document.getElementById('receiverEmail').value.trim().toLowerCase();
     if (!receiverEmail) return alert("Type recipient email first!");
@@ -171,7 +184,6 @@
     }
   }
 
-  // 5. Setup Active Call State
   function setupCallUI(remoteStream) {
     stopRingtone();
 
@@ -196,7 +208,6 @@
     requestWakeLock();
   }
 
-  // 6. End or Reject Call
   function endCall() {
     if (pendingIncomingCall) {
       pendingIncomingCall.close();
@@ -216,8 +227,10 @@
     document.getElementById('callBtn').style.display = "block";
     document.getElementById('answerBtn').style.display = "none";
     document.getElementById('endBtn').style.display = "none";
-    document.getElementById('statusText').innerText = "Status: Call Ended";
-    document.getElementById('statusText').style.background = "#f0f0f0";
+    
+    const savedEmail = localStorage.getItem('userEmail');
+    document.getElementById('statusText').innerText = savedEmail ? "Online as: " + savedEmail : "Status: Offline";
+    document.getElementById('statusText').style.background = savedEmail ? "#d4edda" : "#f0f0f0";
 
     releaseWakeLock();
     if ('mediaSession' in navigator) {
