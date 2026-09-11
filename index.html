@@ -62,7 +62,6 @@
     ringtone.currentTime = 0;
   }
 
-  // 1. Get Microphone Access
   navigator.mediaDevices.getUserMedia({ audio: true, video: false })
     .then(stream => { localAudioStream = stream; })
     .catch(err => console.log("Microphone access required."));
@@ -87,7 +86,7 @@
     }
   }
 
-  // 2. Auto-Connect on App Launch
+  // Auto-connect on app launch
   window.addEventListener('DOMContentLoaded', () => {
     const savedEmail = localStorage.getItem('userEmail');
     if (savedEmail) {
@@ -95,6 +94,14 @@
       connectPeer(savedEmail);
     } else {
       document.getElementById('statusText').innerText = "Status: Enter email to register";
+    }
+  });
+
+  // Re-connect WebSocket automatically if Android drops background connection
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && peer && peer.disconnected) {
+      console.log("App foregrounded: Reconnecting PeerJS...");
+      peer.reconnect();
     }
   });
 
@@ -124,7 +131,14 @@
       document.getElementById('statusText').style.background = "#d4edda";
     });
 
-    // Receiver Side: Ringtone plays automatically when called
+    // Handle WebSocket Disconnection: auto-reconnect instead of closing
+    peer.on('disconnected', () => {
+      console.log("PeerJS disconnected. Attempting auto-reconnect...");
+      if (peer && !peer.destroyed) {
+        peer.reconnect();
+      }
+    });
+
     peer.on('call', (incomingCall) => {
       pendingIncomingCall = incomingCall;
 
@@ -146,7 +160,6 @@
     });
   }
 
-  // 3. Receiver Answers
   function answerIncomingCall() {
     if (!pendingIncomingCall) return;
 
@@ -163,9 +176,11 @@
     activeCall.on('close', () => resetCallUI());
   }
 
-  // 4. Outgoing Call
   function startVoiceCall() {
-    if (!peer || peer.disconnected) return alert("Connecting to server... please wait.");
+    if (!peer || peer.disconnected) {
+      if (peer) peer.reconnect();
+      return alert("Connecting to server... please try calling again in a moment.");
+    }
 
     const receiverEmail = document.getElementById('receiverEmail').value.trim().toLowerCase();
     if (!receiverEmail) return alert("Type recipient email first!");
