@@ -37,13 +37,28 @@
   <br>
   <div class="status" id="statusText">Status: Offline</div>
 
+  <!-- Audio Elements -->
   <audio id="remoteAudio" autoplay playsinline></audio>
+  <audio id="ringtoneAudio" src="lululu-ringtone.mp3" loop preload="auto"></audio>
 
 <script>
   let peer = null;
   let localAudioStream = null;
   let activeCall = null;
   let wakeLock = null;
+
+  const ringtone = document.getElementById('ringtoneAudio');
+
+  // Helper functions for custom ringtone
+  function startRingtone() {
+    ringtone.currentTime = 0;
+    ringtone.play().catch(err => console.log("Ringtone playback blocked:", err));
+  }
+
+  function stopRingtone() {
+    ringtone.pause();
+    ringtone.currentTime = 0;
+  }
 
   // 1. Get Microphone
   navigator.mediaDevices.getUserMedia({ audio: true, video: false })
@@ -99,6 +114,7 @@
       incomingCall.answer(localAudioStream);
       
       incomingCall.on('stream', (remoteStream) => {
+        stopRingtone();
         setupCallUI(remoteStream);
       });
 
@@ -107,6 +123,7 @@
 
     peer.on('error', (err) => {
       console.error(err);
+      stopRingtone();
       if (err.type === 'peer-unavailable') {
         alert("Recipient is offline or email address is incorrect!");
         resetCallUI();
@@ -126,8 +143,12 @@
 
     document.getElementById('statusText').innerText = "Calling " + receiverEmail + "...";
 
+    // Play the custom ringtone while waiting
+    startRingtone();
+
     if (activeCall) {
       activeCall.on('stream', (remoteStream) => {
+        stopRingtone(); // Stop ringtone when connected
         setupCallUI(remoteStream);
       });
 
@@ -137,6 +158,8 @@
 
   // 4. Setup Call Connection
   function setupCallUI(remoteStream) {
+    stopRingtone();
+
     const audioElement = document.getElementById('remoteAudio');
     audioElement.srcObject = remoteStream;
     audioElement.play();
@@ -164,6 +187,7 @@
   }
 
   function resetCallUI() {
+    stopRingtone();
     activeCall = null;
     document.getElementById('remoteAudio').srcObject = null;
     document.getElementById('callBtn').style.display = "block";
