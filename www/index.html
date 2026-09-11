@@ -34,7 +34,7 @@
     <input type="email" id="receiverEmail" placeholder="e.g. user2@gmail.com">
     <button onclick="startVoiceCall()" id="callBtn">Call User</button>
     <button onclick="answerIncomingCall()" id="answerBtn" class="answer-btn">Answer Call 📞</button>
-    <button onclick="endCall()" id="endBtn" class="end-btn">End Call</button>
+    <button onclick="endCall()" id="endBtn" class="end-btn">End Call / Cancel</button>
   </div>
 
   <br>
@@ -49,6 +49,7 @@
   let localAudioStream = null;
   let activeCall = null;
   let pendingIncomingCall = null;
+  let activeDataConn = null;
   let wakeLock = null;
 
   const ringtone = document.getElementById('ringtoneAudio');
@@ -63,7 +64,7 @@
     ringtone.currentTime = 0;
   }
 
-  // 1. Get Microphone Access
+  // Get Microphone Access
   navigator.mediaDevices.getUserMedia({ audio: true, video: false })
     .then(stream => { localAudioStream = stream; })
     .catch(err => console.log("Microphone access required."));
@@ -88,7 +89,7 @@
     }
   }
 
-  // 2. Auto-connect on startup
+  // Auto-connect on startup
   window.addEventListener('DOMContentLoaded', () => {
     const savedEmail = localStorage.getItem('userEmail');
     if (savedEmail) {
@@ -99,10 +100,8 @@
     }
   });
 
-  // Re-connect WebSocket automatically if tab or app returns to foreground
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && peer && peer.disconnected) {
-      console.log("App foregrounded: Reconnecting PeerJS...");
       peer.reconnect();
     }
   });
@@ -132,7 +131,6 @@
       document.getElementById('statusText').innerText = "Online as: " + email;
       document.getElementById('statusText').style.background = "#d4edda";
 
-      // Heartbeat ping every 15 seconds to prevent idle disconnects
       if (window.peerPingInterval) clearInterval(window.peerPingInterval);
       window.peerPingInterval = setInterval(() => {
         if (peer && !peer.destroyed && peer.socket && peer.socket.connected) {
@@ -143,14 +141,17 @@
       }, 15000);
     });
 
-    peer.on('disconnected', () => {
-      console.log("PeerJS disconnected. Attempting auto-reconnect...");
-      if (peer && !peer.destroyed) {
-        peer.reconnect();
-      }
+    // Listen for incoming signal messages (e.g., Decline Signal)
+    peer.on('connection', (conn) => {
+      activeDataConn = conn;
+      conn.on('data', (data) => {
+        if (data.type === 'CALL_DECLINED') {
+          showDeclinedStatus();
+        }
+      });
     });
 
-    // Receiver Side: Ringtone plays automatically when called
+    // Incoming Call Receiver Handler
     peer.on('call', (incomingCall) => {
       pendingIncomingCall = incomingCall;
 
@@ -172,7 +173,7 @@
     });
   }
 
-  // 3. Receiver Answers
+  // Receiver Answers Call
   function answerIncomingCall() {
     if (!pendingIncomingCall) return;
 
@@ -189,7 +190,7 @@
     activeCall.on('close', () => resetCallUI());
   }
 
-  // 4. Outgoing Call (Auto-reconnects quietly if disconnected)
+  // Start Outgoing Call
   function startVoiceCall() {
     const receiverEmail = document.getElementById('receiverEmail').value.trim().toLowerCase();
     if (!receiverEmail) return alert("Type recipient email first!");
@@ -206,9 +207,24 @@
     }
 
     const targetId = sanitizeId(receiverEmail);
+
+    // Open Data Connection to receive decline status
+    activeDataConn = peer.connect(targetId);
+    if (activeDataConn) {
+      activeDataConn.on('data', (data) => {
+        if (data.type === 'CALL_DECLINED') {
+          showDeclinedStatus();
+        }
+      });
+    }
+
     activeCall = peer.call(targetId, localAudioStream);
 
+    // Show status and End Call / Cancel button right away
     document.getElementById('statusText').innerText = "Calling " + receiverEmail + "...";
+    document.getElementById('statusText').style.background = "#fff3cd";
+    document.getElementById('callBtn').style.display = "none";
+    document.getElementById('endBtn').style.display = "block";
 
     if (activeCall) {
       activeCall.on('stream', (remoteStream) => {
@@ -222,6 +238,18 @@
         resetCallUI();
       });
     }
+  }
+
+  function showDeclinedStatus() {
+    stopRingtone();
+    if (activeCall) activeCall.close();
+    
+    document.getElementById('statusText').innerText = "Call Declined by User";
+    document.getElementById('statusText').style.background = "#f8d7da";
+    
+    setTimeout(() => {
+      resetCallUI();
+    }, 3000);
   }
 
   function setupCallUI(remoteStream) {
@@ -249,13 +277,21 @@
   }
 
   function endCall() {
+    // If receiver hangs up during ringing (Declined)
     if (pendingIncomingCall) {
+      if (activeDataConn) {
+        activeDataConn.send({ type: 'CALL_DECLINED' });
+      }
       pendingIncomingCall.close();
       pendingIncomingCall = null;
     }
+
+    // If caller cancels before answer or ends active call
     if (activeCall) {
       activeCall.close();
+      activeCall = null;
     }
+    
     resetCallUI();
   }
 
@@ -263,6 +299,7 @@
     stopRingtone();
     activeCall = null;
     pendingIncomingCall = null;
+    activeDataConn = null;
     document.getElementById('remoteAudio').srcObject = null;
     document.getElementById('callBtn').style.display = "block";
     document.getElementById('answerBtn').style.display = "none";
