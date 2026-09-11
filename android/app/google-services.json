@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "194689251618",
+    "project_id": "andriod-6f767",
+    "storage_bucket": "andriod-6f767.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:194689251618:android:6f91d6543dad8eca7c8d7b",
+        "android_client_info": {
+          "package_name": "com.voicecall.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZJcHU9T_paJWXeMo4iPZlKTtqqsD7GNw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
