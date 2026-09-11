@@ -40,6 +40,7 @@
   <br>
   <div class="status" id="statusText">Status: Initializing...</div>
 
+  <!-- Audio Elements -->
   <audio id="remoteAudio" autoplay playsinline></audio>
   <audio id="ringtoneAudio" src="lululu-ringtone.mp3" loop preload="auto"></audio>
 
@@ -62,6 +63,7 @@
     ringtone.currentTime = 0;
   }
 
+  // 1. Get Microphone Access
   navigator.mediaDevices.getUserMedia({ audio: true, video: false })
     .then(stream => { localAudioStream = stream; })
     .catch(err => console.log("Microphone access required."));
@@ -86,7 +88,7 @@
     }
   }
 
-  // Auto-connect on app launch
+  // 2. Auto-connect on startup
   window.addEventListener('DOMContentLoaded', () => {
     const savedEmail = localStorage.getItem('userEmail');
     if (savedEmail) {
@@ -97,7 +99,7 @@
     }
   });
 
-  // Re-connect WebSocket automatically if Android drops background connection
+  // Re-connect WebSocket automatically if tab or app returns to foreground
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && peer && peer.disconnected) {
       console.log("App foregrounded: Reconnecting PeerJS...");
@@ -129,9 +131,18 @@
     peer.on('open', () => {
       document.getElementById('statusText').innerText = "Online as: " + email;
       document.getElementById('statusText').style.background = "#d4edda";
+
+      // Heartbeat ping every 15 seconds to prevent idle disconnects
+      if (window.peerPingInterval) clearInterval(window.peerPingInterval);
+      window.peerPingInterval = setInterval(() => {
+        if (peer && !peer.destroyed && peer.socket && peer.socket.connected) {
+          peer.socket.send({ type: 'PING' });
+        } else if (peer && peer.disconnected) {
+          peer.reconnect();
+        }
+      }, 15000);
     });
 
-    // Handle WebSocket Disconnection: auto-reconnect instead of closing
     peer.on('disconnected', () => {
       console.log("PeerJS disconnected. Attempting auto-reconnect...");
       if (peer && !peer.destroyed) {
@@ -139,6 +150,7 @@
       }
     });
 
+    // Receiver Side: Ringtone plays automatically when called
     peer.on('call', (incomingCall) => {
       pendingIncomingCall = incomingCall;
 
@@ -160,6 +172,7 @@
     });
   }
 
+  // 3. Receiver Answers
   function answerIncomingCall() {
     if (!pendingIncomingCall) return;
 
@@ -176,14 +189,21 @@
     activeCall.on('close', () => resetCallUI());
   }
 
+  // 4. Outgoing Call (Auto-reconnects quietly if disconnected)
   function startVoiceCall() {
-    if (!peer || peer.disconnected) {
-      if (peer) peer.reconnect();
-      return alert("Connecting to server... please try calling again in a moment.");
-    }
-
     const receiverEmail = document.getElementById('receiverEmail').value.trim().toLowerCase();
     if (!receiverEmail) return alert("Type recipient email first!");
+
+    if (!peer) {
+      const myEmail = document.getElementById('myEmail').value.trim().toLowerCase();
+      if (!myEmail) return alert("Please enter your email and click Save Email / Connect first!");
+      connectPeer(myEmail);
+      return;
+    }
+
+    if (peer.disconnected) {
+      peer.reconnect();
+    }
 
     const targetId = sanitizeId(receiverEmail);
     activeCall = peer.call(targetId, localAudioStream);
@@ -196,6 +216,11 @@
       });
 
       activeCall.on('close', () => resetCallUI());
+
+      activeCall.on('error', (err) => {
+        console.error("Call error:", err);
+        resetCallUI();
+      });
     }
   }
 
