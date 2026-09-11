@@ -10,6 +10,8 @@
     input, button { width: 100%; padding: 10px; margin: 8px 0; box-sizing: border-box; }
     button { background-color: #0070f3; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
     button:hover { background-color: #0051a2; }
+    button.answer-btn { background-color: #28a745; display: none; }
+    button.answer-btn:hover { background-color: #218838; }
     button.end-btn { background-color: #dc3545; display: none; }
     button.end-btn:hover { background-color: #bd2130; }
     .status { font-weight: bold; padding: 10px; background: #f0f0f0; border-radius: 4px; text-align: center; }
@@ -31,6 +33,7 @@
     <label>Recipient's Email:</label>
     <input type="email" id="receiverEmail" placeholder="e.g. user2@gmail.com">
     <button onclick="startVoiceCall()" id="callBtn">Call User</button>
+    <button onclick="answerIncomingCall()" id="answerBtn" class="answer-btn">Answer Call 📞</button>
     <button onclick="endCall()" id="endBtn" class="end-btn">End Call</button>
   </div>
 
@@ -45,11 +48,11 @@
   let peer = null;
   let localAudioStream = null;
   let activeCall = null;
+  let pendingIncomingCall = null;
   let wakeLock = null;
 
   const ringtone = document.getElementById('ringtoneAudio');
 
-  // Helper functions for custom ringtone
   function startRingtone() {
     ringtone.currentTime = 0;
     ringtone.play().catch(err => console.log("Ringtone playback blocked:", err));
@@ -69,7 +72,6 @@
     return email.replace(/[^a-zA-Z0-9]/g, "_");
   }
 
-  // Wake Lock for web browsers
   async function requestWakeLock() {
     try {
       if ('wakeLock' in navigator) {
@@ -86,7 +88,7 @@
     }
   }
 
-  // 2. Register & Go Online
+  // 2. Register & Listen for Incoming Calls
   function registerUser() {
     const email = document.getElementById('myEmail').value.trim().toLowerCase();
     if (!email) return alert("Enter your email address!");
@@ -109,16 +111,17 @@
       document.getElementById('statusText').style.background = "#d4edda";
     });
 
+    // Handle Incoming Call
     peer.on('call', (incomingCall) => {
-      activeCall = incomingCall;
-      incomingCall.answer(localAudioStream);
-      
-      incomingCall.on('stream', (remoteStream) => {
-        stopRingtone();
-        setupCallUI(remoteStream);
-      });
+      pendingIncomingCall = incomingCall;
 
-      incomingCall.on('close', () => resetCallUI());
+      // Start ringing sound and show Answer Call button
+      startRingtone();
+      document.getElementById('statusText').innerText = "Incoming Call...";
+      document.getElementById('statusText').style.background = "#fff3cd";
+      document.getElementById('callBtn').style.display = "none";
+      document.getElementById('answerBtn').style.display = "block";
+      document.getElementById('endBtn').style.display = "block";
     });
 
     peer.on('error', (err) => {
@@ -131,7 +134,24 @@
     });
   }
 
-  // 3. Make Outgoing Call
+  // 3. User Clicks "Answer Call" Button
+  function answerIncomingCall() {
+    if (!pendingIncomingCall) return;
+
+    stopRingtone();
+    activeCall = pendingIncomingCall;
+    pendingIncomingCall = null;
+
+    activeCall.answer(localAudioStream);
+
+    activeCall.on('stream', (remoteStream) => {
+      setupCallUI(remoteStream);
+    });
+
+    activeCall.on('close', () => resetCallUI());
+  }
+
+  // 4. Make Outgoing Call
   function startVoiceCall() {
     if (!peer || peer.disconnected) return alert("Please login first!");
 
@@ -143,12 +163,11 @@
 
     document.getElementById('statusText').innerText = "Calling " + receiverEmail + "...";
 
-    // Play the custom ringtone while waiting
     startRingtone();
 
     if (activeCall) {
       activeCall.on('stream', (remoteStream) => {
-        stopRingtone(); // Stop ringtone when connected
+        stopRingtone();
         setupCallUI(remoteStream);
       });
 
@@ -156,7 +175,7 @@
     }
   }
 
-  // 4. Setup Call Connection
+  // 5. Setup Active Call State
   function setupCallUI(remoteStream) {
     stopRingtone();
 
@@ -175,22 +194,31 @@
     document.getElementById('statusText').innerText = "Status: Connected & Talking!";
     document.getElementById('statusText').style.background = "#cce5ff";
     document.getElementById('callBtn').style.display = "none";
+    document.getElementById('answerBtn').style.display = "none";
     document.getElementById('endBtn').style.display = "block";
 
     requestWakeLock();
   }
 
-  // 5. End Call
+  // 6. End or Reject Call
   function endCall() {
-    if (activeCall) activeCall.close();
+    if (pendingIncomingCall) {
+      pendingIncomingCall.close();
+      pendingIncomingCall = null;
+    }
+    if (activeCall) {
+      activeCall.close();
+    }
     resetCallUI();
   }
 
   function resetCallUI() {
     stopRingtone();
     activeCall = null;
+    pendingIncomingCall = null;
     document.getElementById('remoteAudio').srcObject = null;
     document.getElementById('callBtn').style.display = "block";
+    document.getElementById('answerBtn').style.display = "none";
     document.getElementById('endBtn').style.display = "none";
     document.getElementById('statusText').innerText = "Status: Call Ended";
     document.getElementById('statusText').style.background = "#f0f0f0";
