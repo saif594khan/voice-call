@@ -56,7 +56,7 @@
 
   function startRingtone() {
     ringtone.currentTime = 0;
-    ringtone.play().catch(err => console.log("Ringtone playback blocked:", err));
+    ringtone.play().catch(err => console.log("Ringtone blocked:", err));
   }
 
   function stopRingtone() {
@@ -64,7 +64,7 @@
     ringtone.currentTime = 0;
   }
 
-  // Get Microphone Access
+  // Request Microphone
   navigator.mediaDevices.getUserMedia({ audio: true, video: false })
     .then(stream => { localAudioStream = stream; })
     .catch(err => console.log("Microphone access required."));
@@ -89,8 +89,22 @@
     }
   }
 
-  // Auto-connect on startup
+  // Display Browser/System Notification
+  function showCallNotification(callerEmail) {
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("Incoming Call 📞", {
+        body: callerEmail + " is calling you!",
+        icon: "favicon.ico"
+      });
+    }
+  }
+
+  // Auto-connect on startup & initialize Push
   window.addEventListener('DOMContentLoaded', () => {
+    if ("Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+
     const savedEmail = localStorage.getItem('userEmail');
     if (savedEmail) {
       document.getElementById('myEmail').value = savedEmail;
@@ -98,7 +112,38 @@
     } else {
       document.getElementById('statusText').innerText = "Status: Enter email to register";
     }
+
+    initCapacitorPushNotifications();
   });
+
+  // Handle Capacitor FCM Push Notifications
+  async function initCapacitorPushNotifications() {
+    if (window.Capacitor && window.Capacitor.isPluginAvailable('PushNotifications')) {
+      const PushNotifications = window.Capacitor.Plugins.PushNotifications;
+
+      let permStatus = await PushNotifications.checkPermissions();
+      if (permStatus.receive === 'prompt') {
+        permStatus = await PushNotifications.requestPermissions();
+      }
+
+      if (permStatus.receive === 'granted') {
+        await PushNotifications.register();
+
+        PushNotifications.addListener('registration', (token) => {
+          console.log('FCM Device Token:', token.value);
+          localStorage.setItem('fcmToken', token.value);
+        });
+
+        PushNotifications.addListener('pushNotificationReceived', (notification) => {
+          console.log('Push Notification Received:', notification);
+        });
+
+        PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+          console.log('Push Action Performed:', notification);
+        });
+      }
+    }
+  }
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && peer && peer.disconnected) {
@@ -141,14 +186,12 @@
       }, 15000);
     });
 
-    // Handle incoming data connections (Decline / Cancel signals)
     peer.on('connection', (conn) => {
       activeDataConn = conn;
       conn.on('data', (data) => {
         if (data.type === 'CALL_DECLINED') {
           showDeclinedStatus();
         }
-        // Stop ringtone and reset UI if caller cancels while ringing
         if (data.type === 'CALL_CANCELLED') {
           stopRingtone();
           resetCallUI();
@@ -156,12 +199,15 @@
       });
     });
 
-    // Incoming Call Handler
+    // Handle Incoming Calls
     peer.on('call', (incomingCall) => {
       pendingIncomingCall = incomingCall;
 
+      const callerEmail = incomingCall.peer.replace(/_/g, ".");
+      showCallNotification(callerEmail);
       startRingtone();
-      document.getElementById('statusText').innerText = "Incoming Call...";
+
+      document.getElementById('statusText').innerText = "Incoming Call from " + callerEmail;
       document.getElementById('statusText').style.background = "#fff3cd";
       document.getElementById('callBtn').style.display = "none";
       document.getElementById('answerBtn').style.display = "block";
@@ -178,7 +224,6 @@
     });
   }
 
-  // Receiver Answers Call
   function answerIncomingCall() {
     if (!pendingIncomingCall) return;
 
@@ -195,7 +240,6 @@
     activeCall.on('close', () => resetCallUI());
   }
 
-  // Start Outgoing Call
   function startVoiceCall() {
     const receiverEmail = document.getElementById('receiverEmail').value.trim().toLowerCase();
     if (!receiverEmail) return alert("Type recipient email first!");
@@ -213,7 +257,6 @@
 
     const targetId = sanitizeId(receiverEmail);
 
-    // Establish Data Connection for control signals
     activeDataConn = peer.connect(targetId);
     if (activeDataConn) {
       activeDataConn.on('data', (data) => {
@@ -240,7 +283,6 @@
       });
 
       activeCall.on('close', () => resetCallUI());
-
       activeCall.on('error', (err) => {
         console.error("Call error:", err);
         resetCallUI();
@@ -285,7 +327,6 @@
   }
 
   function endCall() {
-    // Receiver declines incoming call
     if (pendingIncomingCall) {
       if (activeDataConn) {
         activeDataConn.send({ type: 'CALL_DECLINED' });
@@ -294,7 +335,6 @@
       pendingIncomingCall = null;
     }
 
-    // Caller cancels call while ringing or active
     if (activeCall) {
       if (activeDataConn) {
         activeDataConn.send({ type: 'CALL_CANCELLED' });

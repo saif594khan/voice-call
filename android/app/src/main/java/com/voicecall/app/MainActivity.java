@@ -1,8 +1,7 @@
 package com.voicecall.app;
 
+import android.os.Build;
 import android.os.Bundle;
-import android.media.AudioManager;
-import android.content.Context;
 import android.view.WindowManager;
 import com.getcapacitor.BridgeActivity;
 
@@ -11,17 +10,17 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Keep screen and CPU active during calls
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
-                             WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD |
-                             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
-                             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
-
-        // Force Android to route WebRTC audio through the Voice Communication stream
-        AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        if (audioManager != null) {
-            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-            audioManager.setSpeakerphoneOn(true);
+        // Turn screen on and show over lock screen for incoming call UI
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
+        } else {
+            getWindow().addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
+                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+            );
         }
     }
 }
