@@ -141,17 +141,22 @@
       }, 15000);
     });
 
-    // Listen for incoming signal messages (e.g., Decline Signal)
+    // Handle incoming data connections (Decline / Cancel signals)
     peer.on('connection', (conn) => {
       activeDataConn = conn;
       conn.on('data', (data) => {
         if (data.type === 'CALL_DECLINED') {
           showDeclinedStatus();
         }
+        // Stop ringtone and reset UI if caller cancels while ringing
+        if (data.type === 'CALL_CANCELLED') {
+          stopRingtone();
+          resetCallUI();
+        }
       });
     });
 
-    // Incoming Call Receiver Handler
+    // Incoming Call Handler
     peer.on('call', (incomingCall) => {
       pendingIncomingCall = incomingCall;
 
@@ -208,19 +213,22 @@
 
     const targetId = sanitizeId(receiverEmail);
 
-    // Open Data Connection to receive decline status
+    // Establish Data Connection for control signals
     activeDataConn = peer.connect(targetId);
     if (activeDataConn) {
       activeDataConn.on('data', (data) => {
         if (data.type === 'CALL_DECLINED') {
           showDeclinedStatus();
         }
+        if (data.type === 'CALL_CANCELLED') {
+          stopRingtone();
+          resetCallUI();
+        }
       });
     }
 
     activeCall = peer.call(targetId, localAudioStream);
 
-    // Show status and End Call / Cancel button right away
     document.getElementById('statusText').innerText = "Calling " + receiverEmail + "...";
     document.getElementById('statusText').style.background = "#fff3cd";
     document.getElementById('callBtn').style.display = "none";
@@ -277,7 +285,7 @@
   }
 
   function endCall() {
-    // If receiver hangs up during ringing (Declined)
+    // Receiver declines incoming call
     if (pendingIncomingCall) {
       if (activeDataConn) {
         activeDataConn.send({ type: 'CALL_DECLINED' });
@@ -286,8 +294,11 @@
       pendingIncomingCall = null;
     }
 
-    // If caller cancels before answer or ends active call
+    // Caller cancels call while ringing or active
     if (activeCall) {
+      if (activeDataConn) {
+        activeDataConn.send({ type: 'CALL_CANCELLED' });
+      }
       activeCall.close();
       activeCall = null;
     }
